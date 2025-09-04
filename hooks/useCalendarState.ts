@@ -1,66 +1,60 @@
-import { useState, useRef, useMemo } from "react";
-import { Animated, Easing, Dimensions, PanResponder } from "react-native";
+import { useState, useCallback } from "react";
+import { Dimensions } from "react-native";
+import { useSharedValue, withTiming, Easing, runOnJS } from "react-native-reanimated";
+import { Gesture } from "react-native-gesture-handler";
 
 const { width } = Dimensions.get("window");
 
 export function useCalendarState() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<number | null>(new Date().getDate());
-
-  const [targetDate, setTargetDate] = useState(currentDate);
+  const [outgoingDate, setOutgoingDate] = useState<Date | null>(null);
   const [direction, setDirection] = useState(0);
-  const [isAnimating, setAnimating] = useState(false);
-  const animValue = useRef(new Animated.Value(0)).current;
+  const animValue = useSharedValue(0);
 
-  const changeMonth = (offset: number, selectDay?: number) => {
-    if (isAnimating || offset === 0) return;
+  const changeMonth = useCallback((offset: number, selectDay?: number) => {
+    if (animValue.value !== 0 && animValue.value !== 1) {
+      return;
+    }
+
+    setOutgoingDate(currentDate);
+    setDirection(offset);
 
     const newDate = new Date(currentDate);
     newDate.setMonth(newDate.getMonth() + offset);
-
-    setAnimating(true);
-    setDirection(offset);
-    setTargetDate(newDate);
-
-    animValue.setValue(0);
-
-    Animated.timing(animValue, {
-      toValue: 1,
-      duration: 250,
+    setCurrentDate(newDate);
+    setSelectedDate(selectDay ?? null);
+    
+    animValue.value = 0;
+    animValue.value = withTiming(1, {
+      duration: 300,
       easing: Easing.out(Easing.ease),
-      useNativeDriver: true,
-    }).start(() => {
-      setCurrentDate(newDate);
-      setSelectedDate(selectDay ?? null);
-      setDirection(0);
-      setAnimating(false);
+    }, (isFinished) => {
+      if (isFinished) {
+        runOnJS(setOutgoingDate)(null);
+      }
     });
-  };
+  }, [currentDate, animValue]);
 
-  const panResponder = useMemo( // useMemo 미사용 시 좌우 스와이프 시 특정 달만 반복됨
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          !isAnimating && Math.abs(gestureState.dx) > 20,
-        onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dx > 50) {
-            changeMonth(-1);
-          } else if (gestureState.dx < -50) {
-            changeMonth(1);
-          }
-        },
-      }),
-    [isAnimating, currentDate]
-  );
+  const gesture = Gesture.Pan()
+    .activeOffsetX([-20, 20])
+    .onEnd((event) => {
+      if (event.translationX > 50) {
+        runOnJS(changeMonth)(-1);
+      } else if (event.translationX < -50) {
+        runOnJS(changeMonth)(1);
+      }
+    });
 
   return {
     currentDate,
-    targetDate,
+    outgoingDate,
     selectedDate,
     direction,
     animValue,
-    panHandlers: panResponder.panHandlers,
     setSelectedDate,
     changeMonth,
+    gesture,
+    width,
   };
 }
