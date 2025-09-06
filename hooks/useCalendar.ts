@@ -2,27 +2,37 @@ import { useMemo } from "react";
 
 export function useCalendar(year: number, month: number) {
   return useMemo(() => {
-    const firstDay = new Date(year, month - 1, 1).getDay();
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const prevMonthDays = new Date(year, month - 1, 0).getDate();
+    const firstDay = new Date(year, month - 1, 1);
+    const lastDay = new Date(year, month, 0);
+
+    const startDayOfWeek = firstDay.getDay(); // 이번 달 1일의 요일
+    const daysInMonth = lastDay.getDate(); // 이번 달 총 일수
 
     const weeks: { day: number; isOutside: boolean; monthOffset: number }[][] = [];
-    let currentDay = 1 - firstDay;
+    let currentWeek: { day: number; isOutside: boolean; monthOffset: number }[] = [];
 
-    // 이전 달의 날짜 표시를 위해 루프 조건 설정
-    while (weeks.length < 6) {
-      const week: { day: number; isOutside: boolean; monthOffset: number }[] = [];
-      for (let i = 0; i < 7; i++) {
-        if (currentDay < 1) {
-          week.push({ day: prevMonthDays + currentDay, isOutside: true, monthOffset: -1 });
-        } else if (currentDay > daysInMonth) {
-          week.push({ day: currentDay - daysInMonth, isOutside: true, monthOffset: 1 });
-        } else {
-          week.push({ day: currentDay, isOutside: false, monthOffset: 0 });
-        }
-        currentDay++;
+    // 이전 달
+    for (let i = 0; i < startDayOfWeek; i++) {
+      const prevDate = new Date(year, month - 1, -(startDayOfWeek - i - 1));
+      currentWeek.push({ day: prevDate.getDate(), isOutside: true, monthOffset: -1 });
+    }
+
+    // 이번 달
+    for (let d = 1; d <= daysInMonth; d++) {
+      currentWeek.push({ day: d, isOutside: false, monthOffset: 0 });
+      if (currentWeek.length === 7) {
+        weeks.push(currentWeek);
+        currentWeek = [];
       }
-      weeks.push(week);
+    }
+
+    // 마지막 주
+    if (currentWeek.length > 0) {
+      const nextCount = 7 - currentWeek.length;
+      for (let i = 1; i <= nextCount; i++) {
+        currentWeek.push({ day: i, isOutside: true, monthOffset: 1 });
+      }
+      weeks.push(currentWeek);
     }
     return weeks;
   }, [year, month]);
