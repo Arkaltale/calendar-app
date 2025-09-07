@@ -27,7 +27,7 @@ const getWeekIndexForDate = (date: Date, monthWeeks: any[][]) =>
     week.some(cell => cell && !cell.isOutside && cell.day === date.getDate())
   ) ?? 0;
 
-export function useInteractiveCalendar({ onCollapseChange }: UseInteractiveCalendarProps) {
+export function useInteractiveCalendar() {
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [weekOffset, setWeekOffset] = useState(0);
@@ -37,25 +37,54 @@ export function useInteractiveCalendar({ onCollapseChange }: UseInteractiveCalen
   const translateX = useSharedValue(0);
   const activeWeekIndex = useSharedValue(0);
   const startHeight = useSharedValue(0);
-  const [renderDate, setRenderDate] = useState(viewDate); 
-
-  const isWeekView = calendarHeight.value < MONTH_HEIGHT / 2;
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const [prevDate, centerDate, nextDate] = useMemo(() => {
-    const center = viewDate;
-
-    if (isWeekView) {
+    if (isCollapsed) {
+      let center: Date;
+      if (weekOffset === 0) {
+        if (
+          selectedDate &&
+          selectedDate.getFullYear() === viewDate.getFullYear() &&
+          selectedDate.getMonth() === viewDate.getMonth()
+        ) {
+          center = new Date(selectedDate);
+        } else {
+          center = new Date(viewDate);
+          center.setDate(center.getDate() + 7);
+        }
+      } else {
+        center = new Date(viewDate);
+      }
       const prev = new Date(center);
       prev.setDate(prev.getDate() - 7);
       const next = new Date(center);
       next.setDate(next.getDate() + 7);
       return [prev, center, next];
     } else {
+      const center = viewDate;
       const prev = new Date(center.getFullYear(), center.getMonth() - 1, 1);
       const next = new Date(center.getFullYear(), center.getMonth() + 1, 1);
       return [prev, center, next];
     }
-  }, [viewDate, isWeekView]);
+  }, [selectedDate, viewDate, isCollapsed, weekOffset]);
+
+  useEffect(() => {
+    if (!isCollapsed) {
+      setViewDate((current) => {
+        if (
+          selectedDate &&
+          selectedDate.getFullYear() === current.getFullYear() &&
+          selectedDate.getMonth() === current.getMonth()
+        ) {
+          return new Date(selectedDate);
+        } else {
+          const daysInMonth = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
+          return new Date(current.getFullYear(), current.getMonth(), Math.floor(daysInMonth / 2));
+        }
+      });
+    }
+  }, [isCollapsed, selectedDate]);
 
   useEffect(() => {
     if (!selectedDate) return;
@@ -66,32 +95,29 @@ export function useInteractiveCalendar({ onCollapseChange }: UseInteractiveCalen
     const targetYear = targetDate.getFullYear();
     const targetMonth = targetDate.getMonth() + 1;
 
-    if (isWeekView) {
+    if (isCollapsed) {
       if (viewDate.getFullYear() !== targetYear || viewDate.getMonth() + 1 !== targetMonth) {
         setViewDate(new Date(targetYear, targetMonth - 1, 1));
         return;
       }
-      const weekIndex = getWeekIndexForDate(targetDate, currentWeeks);
-      activeWeekIndex.value = weekIndex;
-      console.log(`selectedDate: ${selectedDate.toDateString()}, weekOffset: ${weekOffset}, targetDate: ${targetDate.toDateString()}, weekIndex: ${weekIndex}`);
     }
-    // console.log(`selectedDate: ${selectedDate.toDateString()}, weekOffset: ${weekOffset}, targetDate: ${targetDate.toDateString()}}`);
-
+    const weekIndex = getWeekIndexForDate(targetDate, currentWeeks);
+    activeWeekIndex.value = weekIndex;
   }, [selectedDate, weekOffset, viewDate, currentWeeks]);
 
   useEffect(() => {
-    translateX.value = 0;
-  }, [viewDate]);
+    if (translateX.value != 0) translateX.value = 0;
+  }, [viewDate, translateX.value]);
 
   const selectDate = useCallback((date: Date) => {
     setSelectedDate(date);
     setViewDate(new Date(date.getFullYear(), date.getMonth(), 1));
     setWeekOffset(0);
-  }, []);
+  }, [setSelectedDate, setViewDate, setWeekOffset]);
 
   const changeViewDate = useCallback(
     (offset: number) => {
-      if (isWeekView) {
+      if (isCollapsed) {
         setWeekOffset(current => current + offset);
       } else {
         setViewDate((current) => {
@@ -101,19 +127,19 @@ export function useInteractiveCalendar({ onCollapseChange }: UseInteractiveCalen
         });
       }
     },
-    [calendarHeight]
+    [isCollapsed]
   );
 
   const changeMonthWithAnimation = useCallback(
     (offset: number) => {
       if (translateX.value !== 0) return;
-      translateX.value = withTiming(-offset * width, { duration: 250 }, (isFinished) => {
+      translateX.value = withTiming(-offset * width, { duration: 400 }, (isFinished) => {
         if (isFinished) {
           runOnJS(changeViewDate)(offset);
         }
       });
     },
-    [changeViewDate, translateX]
+    [changeViewDate, translateX.value]
   );
 
   const verticalPan = Gesture.Pan()
@@ -129,11 +155,11 @@ export function useInteractiveCalendar({ onCollapseChange }: UseInteractiveCalen
     .onEnd(() => {
       if (calendarHeight.value < monthHeight / 2) {
         calendarHeight.value = withSpring(WEEK_HEIGHT, { damping: 15 });
-        if (onCollapseChange) runOnJS(onCollapseChange)(true);
+        runOnJS(setIsCollapsed)(true);
       } else {
         calendarHeight.value = withSpring(monthHeight, { damping: 15 });
         runOnJS(setWeekOffset)(0);
-        if (onCollapseChange) runOnJS(onCollapseChange)(false);
+        runOnJS(setIsCollapsed)(false);
       }
     });
 
@@ -180,7 +206,7 @@ export function useInteractiveCalendar({ onCollapseChange }: UseInteractiveCalen
     gesture: Gesture.Race(verticalPan, horizontalPan),
     animatedContainerStyle,
     animatedWrapperStyle,
-    isCollapsed: isWeekView,
+    isCollapsed: isCollapsed,
     prevDate,
     centerDate,
     nextDate

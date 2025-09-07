@@ -74,9 +74,7 @@ export default function Calendar() {
     prevDate,
     centerDate,
     nextDate,
-  } = useInteractiveCalendar({
-    onCollapseChange: setIsCollapsed,
-  });
+  } = useInteractiveCalendar();
 
 
   const prevWeeks = useCalendar(prevDate.getFullYear(), prevDate.getMonth() + 1);
